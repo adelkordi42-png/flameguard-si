@@ -105,22 +105,26 @@ Key decisions:
 | F6 | Nearest runs | ordered, exact self-match at distance 0, only feature columns exposed |
 | F7 | Verdict API | typed contract asserted; **p95 51.3 ms** over 60 calls |
 | F8 | SPA | headless Chrome render with **no console errors**; abstain branch + escaping verified against the shipping script |
-| F9 | Deploy | **not done** — see ORPHANS |
+| F9 | Deploy | **live** at <https://flameguard-si.onrender.com> — health, meta, predict, 422 and OOD abstention verified from outside, and the SPA renders in a real browser with no console errors; warm p95 **314 ms** |
 
 Accuracy figures are on **SYNTHETIC** data and are labelled as such everywhere
 (`metrics.json`, `validation.md`, UI badge).
+
+Production latency note: warm p95 is 314 ms over the network versus 51 ms on
+localhost, so ~260 ms is round-trip time, not inference (model scoring is ~1 ms).
+The host reports `gcp-us-west1`; recreating the service in Frankfurt would
+roughly halve it. Still comfortably inside the "under a second" claim.
 
 ## [ORPHANS & PENDING]
 
 | # | Item | Status | Notes |
 | --- | --- | --- | --- |
-| 1 | Real organizer CSV in `data/raw/` | **BLOCKED ON USER** | Verified: zero `*.csv` files exist under `/mnt/c/Users/Dell`. The pipeline runs on a clearly-labelled SYNTHETIC placeholder. Drop the CSV and re-run `python -m flameguard.train` — no code change needed. |
+| 1 | Real PSI dataset (BASS PSI-26, BASS-II PSI-25) in `data/raw/` | **BLOCKED ON USER** | The challenge designates NASA PSI, whose datasets need an account to download. Pipeline runs on a clearly-labelled SYNTHETIC placeholder. Drop the files and re-run `python -m flameguard.train`. |
 | 2 | NASA-validated numbers | **BLOCKED ON #1** | Current metrics are synthetic and marked as such in three places. |
-| 3 | Public deployment (Render, chosen over HF) | **BLOCKED ON USER** | Docker Spaces need a paid HF plan, so deployment moved to Render's free tier. `render.yaml` + Dockerfile are ready; Render deploys from a Git provider, so this directory must first be pushed to GitHub/GitLab. |
-| 4 | Container image built | **UNVERIFIED** | `docker` is not installed in this environment, so the image was never built. Its constituent steps (`pip install -r requirements.txt`, `python -m flameguard.train` from a clean state) were verified natively. |
-| 5 | NTRS paper extraction (SoFIE/BASS/FLEX) | **OUT OF SCOPE** | Rescinded by the <24 h decision; claim narrowed to the provided dataset. |
-| 6 | Stretch goals (2D/3D view, what-if slider, confusion-matrix UI) | **OUT OF SCOPE** | Confusion matrix is emitted to `validation.md` instead. |
+| 3 | PSI→feature adapter | **BLOCKED ON #1** | Cannot be written meaningfully until the real column layout is visible. |
+| 4 | NTRS paper extraction (SoFIE/BASS/FLEX) | **OUT OF SCOPE** | Rescinded by the <24 h decision. |
+| 5 | Stretch goals (2D/3D view, what-if slider, confusion-matrix UI) | **OUT OF SCOPE** | Confusion matrix is emitted to `validation.md` instead. |
 
-Items 1–3 cannot be closed from this machine: they require the dataset and
-credentials that only the user can supply. Everything that does not depend on
-them is finished and verified.
+Items 1–3 cannot be closed from this machine: they need PSI files only the user
+can download. Everything that does not depend on them is finished and verified.
+The container image is no longer a risk — Render built it and the service runs.

@@ -10,6 +10,8 @@ pinned: false
 
 # FlameGuard SI
 
+**Live demo:** <https://flameguard-si.onrender.com>
+
 A calibrated decision layer for spacecraft cabin fire safety. Enter a scenario —
 material, O2 concentration, pressure, opposed-flow velocity, confinement — and get
 a flammability verdict (`sustained_spread` / `marginal` / `extinction`), a
