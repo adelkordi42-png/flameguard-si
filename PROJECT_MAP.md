@@ -131,7 +131,7 @@ Key decisions:
 | Canonical demo | 6 held-out cases → **5/6** correct with the margins engine; the miss (M20) is shown in the table | **PASS** |
 | Metrics honesty | accuracy 0.431, macro-F1 0.381, ECE 0.200, Brier 0.216, abstention 0.392; published subset n=9 acc 0.444 / macro-F1 0.416 | **PASS (low, disclosed)** |
 | Engine gate | `scripts/signal_check.py`; local jevos 4/10, Codiv 4/10, local+primer 3/10; real Jev not run here | **BLOCKED — no provider key in this shell** |
-| Deploy/push | commit + push after the docs pass; `ENGINE_PROVIDER=physics`, `JEV_MODE=cache` needs no secret | **PENDING** |
+| Deploy/push | live at <https://flameguard-si.onrender.com> with `engine_provider=physics`, `feature_mode=margins_only`, 167 runs, canonical 5/6; push `6293a5c`+`d706538` | **PASS** |
 | 60 s video | user screen recording; `DEMO.md` shot list | **PENDING (user)** |
 
 ## [ORPHANS & PENDING]
