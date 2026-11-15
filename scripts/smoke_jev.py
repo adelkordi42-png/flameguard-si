@@ -16,9 +16,17 @@ def main() -> int:
     scenario = dataset.canonical_cases(runs, dataset.load_cases())[0]["scenario"]
     engine = jev.JevEngine()
     print(f"endpoint={jev.ENDPOINT}")
-    print(f"model={engine.model} mode={jev.mode()} key={'set' if engine.key else 'MISSING'} timeout={jev.TIMEOUT_S:g}s")
+    print(
+        f"model={engine.model} mode={jev.mode()} base={jev.BASE_URL} "
+        f"key_source={jev.key_source() or 'MISSING'} timeout={jev.TIMEOUT_S:g}s"
+    )
     if not engine.key:
-        print("JEV_API_KEY (or TYPESAFE_API_KEY / BEATAPI_API_KEY) is not set", file=sys.stderr)
+        names = ", ".join(jev.key_env_names())
+        print(
+            f"no key for {jev.BASE_URL}: set one of {names} "
+            "(and make sure JEV_API_BASE points at that provider)",
+            file=sys.stderr,
+        )
         return 1
     try:
         response = engine.answer(scenario, allow_live=True)
