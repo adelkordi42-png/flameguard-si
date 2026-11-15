@@ -1,86 +1,114 @@
-# Judge demo script — 90 seconds
+# Judge demo — 60 seconds
 
-**URL:** <https://flameguard-si.onrender.com>
-
-Before you walk over, warm the service — Render sleeps the free tier after 15
-minutes idle and the first request then takes ~1 minute:
+**Precondition:** the shipped artifacts are committed; no key is needed.
 
 ```bash
-curl -s https://flameguard-si.onrender.com/api/health
+python -m flameguard.evaluate --no-engine   # margins-only fit + VALIDATION.md (already run)
+python -m flameguard.precompute --check     # physics mode: nothing to cache
+python -m pytest -q                          # 19 tests
 ```
 
-Stop when it prints `{"status":"ok",...}`.
+Start the demo (offline, zero keys, zero tokens):
+
+```bash
+ENGINE_PROVIDER=physics JEV_MODE=cache uvicorn flameguard.api:app --port 7860
+```
+
+Warm the page and the health endpoint before the judge arrives:
+
+```bash
+curl -s localhost:7860/api/health
+curl -s localhost:7860/api/cases | python3 -c 'import json,sys; d=json.load(sys.stdin); print(len(d["canonical"]), len(d["novel"]))'
+```
+
+Expect `{"status":"ok","engine_provider":"physics",...}` and `6 8`.
+
+> Keyed engine instead: set `JEV_API_BASE`/`JEV_MODEL`/`JEV_API_KEY` (or
+> `LLM_BASE_URL`/`LLM_MODEL`/`LLM_API_KEY`), run `python scripts/signal_check.py`;
+> only if it prints 6/10 or better, run `evaluate --fetch` and `precompute`.
 
 ---
 
-## Beat 1 — the problem (15 s)
+## Beat 1 — problem (0–10 s)
 
-> "Spacecraft fire safety is a life-or-death call, and NASA has decades of
-> microgravity combustion data — BASS, FLEX, Saffire — sitting in a database.
-> The problem is that data tells you what *happened*; it doesn't tell you what to
-> *do* about the cabin in front of you."
+> “A fire in freefall has no truck bay and no escape. NASA has decades of
+> microgravity combustion data, but the data says what happened in a test — not
+> what to do about the cabin in front of you.”
 
-Page loads with a verdict already rendered, so there is no empty screen.
+Point at the header: **167 runs · 24 published / 143 derived** and the provenance
+warning. Say the warning is intentional: the report separates published labels
+from labels derived by a locked policy.
 
-## Beat 2 — a normal call (20 s)
+## Beat 2 — one call (10–25 s)
 
-Press **"Oxygen-rich, quiescent flow"**.
+Press the first canonical preset / leave the default. Point at the verdict card.
 
-Expect: **Sustained spread**, calibrated confidence **85.6%**, and a suppression
-strategy recommending inerting plus depressurisation.
+> “One request carries the scenario and six typed Jev questions: four threshold
+> questions, one three-way class question, one severity score. A calibrated
+> logistic layer combines the six answers. The card shows the class, the
+> calibrated probability, the typed reason codes, and one of five suppression
+> strategies.”
 
-> "One click, under a second, and it doesn't just label the flame — it names the
-> suppression action and the O2 and pressure regime it applies to."
+Read the card; do not read a number from this script. The card is generated from
+the committed cache.
 
-Point at **Section 3**: the five nearest labelled runs, each with the outcome
-actually recorded, and an "agrees with verdict" column.
+## Beat 3 — predicted vs actual (25–40 s)
 
-## Beat 3 — the opposite regime (15 s)
+Point at section 3.
 
-Press **"Inerted, high opposed flow"**.
+> “These six are held out, not training rows. Each row is a real NASA table with
+> its source. The table shows predicted versus actual, the probability, whether it
+> matched, and whether the label was published or derived.”
 
-Expect: **Extinction**, **85.2%**, "no active suppression required — maintain
-inerting margin and monitor".
+If one is wrong, say so. The match column is the honest scorecard.
 
-> "Same model, opposite regime. The opposed flow blows the flame out before it
-> can establish."
+## Beat 4 — the differentiator (40–50 s)
 
-## Beat 4 — the differentiator (25 s)
+Set **Material: PMMA**, **O2: 99**, **Pressure: 101.3**, **Opposed flow: 10**,
+**Thickness: 1**, then Assess. Or pick an uncached novel scenario with the key
+removed.
 
-Set **Material: `cotton`**, **O2: `15.78`**, **Pressure: `75.25`**,
-**Opposed flow: `0`**, **Geometry: `confined`**. Assess.
+> “This input is outside the observed envelope. The system refuses to answer:
+> `needs_human_review`, reason `input_outside_observed_range`, strategy
+> `abort_configuration`. A dashboard that always answers is a dashboard you stop
+> trusting.”
 
-Expect: **Needs human review**, confidence **50.8%**, reason `low_confidence`,
-and the suppression line replaced by an escalation instruction.
+Mention the other triggers: low calibrated probability, top-two classes too close,
+and a cache miss with no network (`jev_unavailable_no_cache`).
 
-> "This is the part that makes it usable on a spacecraft. At 51% confidence the
-> system refuses to give a verdict. It says *I don't know* and hands the decision
-> to a human. A dashboard that always answers is a dashboard you stop trusting."
+## Beat 5 — validation and limits (50–60 s)
 
-Then mention the other two abstention triggers: top-two classes too close, and
-any input outside the trained range (`o2 = 5000` → `input_outside_observed_range`).
+Open `/metrics`.
 
-## Beat 5 — honesty (15 s)
+> “Accuracy, macro-F1, ECE, Brier, abstention, per-family and published-vs-derived
+> tables are generated from the held-out 30% only. Calibration is fitted and
+> validated on NASA-derived runs; it is not inherited from Jev. The suppression
+> strategy is a rule-based policy, not a learned classifier. This is not a
+> flight-qualified procedure.”
 
-> "The model is calibrated, and it's validated on held-out runs with a reported
-> confusion matrix and Brier score. Right now it's trained on a synthetic
-> placeholder while the real PSI measurement files are being pulled in — the
-> badge at the top says so. Swapping in the real BASS runs is one command; the
-> eval harness and the UI don't change."
+Stop. Do not claim a number that is not on the page.
 
 ---
 
 ## If something breaks
 
-| Symptom | Cause | Recovery |
+| symptom | cause | recovery |
 | --- | --- | --- |
-| First request hangs ~60 s | free-tier cold start | it recovers by itself; that's why the warm-up curl exists |
-| Page shows "model unavailable" | deploy restarted mid-demo | wait 60 s, reload |
-| A preset gives a different class | model retrained on new data | read the verdict card aloud; the class is what the model says, not what this script says |
+| canonical table is empty | `combiner.joblib` missing | run `evaluate --no-engine`; do not fabricate a verdict |
+| verdict is `needs_human_review` | the abstention rule fired | read the reason; that is the product working |
+| `/metrics` says “metrics unavailable” | `evaluate` not run | run `evaluate --no-engine`; the page reads `artifacts/metrics.json` |
+| first Render request hangs | free-tier cold start | warm `/api/health` before the demo |
+| page is blank | JS error | open the console; the page has no external dependencies |
 
 ## Numbers to have ready
 
-- Held-out accuracy **0.794**, macro-F1 **0.788** vs majority baseline **0.185**
-- Brier **0.1133 → 0.1059** after Platt calibration
-- Abstention τ **0.55**, review rate **21.7%**, accuracy on auto-clear **85.8%**
-- Production p95 latency **314 ms** (≈260 ms of that is network round-trip)
+Only from `artifacts/metrics.json` / `/metrics`:
+
+- held-out accuracy and 95% CI
+- macro-F1 and 95% CI
+- ECE and Brier
+- abstention rate and selective accuracy
+- published vs derived counts (24 / 143)
+- full-data gate (167 ≥ 150)
+
+Never quote a number from this file; it is a script, not a measurement.

@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>FlameGuard SI — validation metrics</title>
+<style>
+  :root{--bg:#0b0f16;--panel:#151c27;--line:#26313f;--txt:#e8eef7;--dim:#93a2b8;--accent:#5aa9ff;--warn:#f0b429;--bad:#ff5f56;--good:#37c98b}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--txt);font:15px/1.55 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+  header{padding:22px 26px 14px;border-bottom:1px solid var(--line)}
+  h1{margin:0;font-size:24px} h1 span{color:var(--accent)}
+  h2{font-size:13px;text-transform:uppercase;letter-spacing:1.2px;color:var(--dim);margin:24px 0 10px}
+  a{color:var(--accent)}
+  main{padding:8px 26px 40px;max-width:1200px}
+  .note{color:var(--dim);font-size:12px;max-width:100ch}
+  .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin:16px 0}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px}
+  .card .k{color:var(--dim);font-size:11px;text-transform:uppercase;letter-spacing:.8px}
+  .card .v{font-size:26px;font-weight:700;margin-top:4px}
+  .card .s{color:var(--dim);font-size:11px}
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:16px;margin-bottom:14px}
+  .banner{border-left:3px solid var(--warn);background:#241c0c;padding:10px 12px;border-radius:0 8px 8px 0;margin:12px 0}
+  .banner.bad{border-color:var(--bad);background:#2a1212}
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  th,td{text-align:left;padding:7px 9px;border-bottom:1px solid var(--line)}
+  th{color:var(--dim);font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.6px}
+  .good{color:var(--good)} .bad{color:var(--bad)}
+  .empty{color:var(--dim);font-style:italic}
+</style>
+</head>
+<body>
+<header>
+  <h1>FlameGuard <span>SI</span> — validation</h1>
+  <p class="note">Generated from <code>artifacts/metrics.json</code>. Calibration is fitted on the 70% combiner-fit split and measured on the 30% held-out split; it is not inherited from the engine. <a href="/">Back to the verdict page</a> · <a href="/VALIDATION.md">VALIDATION.md</a></p>
+</header>
+<main>
+  <div id="error" class="empty">Loading metrics…</div>
+  <div id="content" hidden>
+    <div id="banners"></div>
+    <div class="cards" id="cards"></div>
+    <h2>Per class (held-out)</h2>
+    <div class="panel"><table id="per-class"></table></div>
+    <h2>Confusion matrix (rows = actual, columns = predicted)</h2>
+    <div class="panel"><table id="confusion"></table></div>
+    <h2>Calibration</h2>
+    <div class="panel"><table id="reliability"></table></div>
+    <h2>Abstention trade-off (tau chosen on out-of-fold train)</h2>
+    <div class="panel"><table id="abstention"></table></div>
+    <h2>Per family (held-out)</h2>
+    <div class="panel"><table id="per-family"></table>
+      <p class="note">Macro-F1 is computed over the classes present in the family, not a fixed 3-class macro.</p>
+    </div>
+    <h2>Published vs derived labels (held-out)</h2>
+    <div class="panel"><table id="per-basis"></table></div>
+    <h2>Misclassified examples</h2>
+    <div class="panel" id="misclassified"></div>
+    <p class="note" id="limitations"></p>
+  </div>
+</main>
+<script>
+const $ = (id) => document.getElementById(id);
+const ESC = {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"};
+const esc = (v) => String(v === undefined || v === null ? "" : v).replace(/[&<>"']/g, (c) => ESC[c]);
+const pct = (v) => (v === null || v === undefined) ? "n/a" : (100*v).toFixed(3) + "%";
+const num = (v) => (v === null || v === undefined) ? "n/a" : Number(v).toFixed(3);
+const ci = (v) => !v ? "n/a" : "[" + num(v[0]) + ", " + num(v[1]) + "]";
+function table(el, head, rows){
+  el.innerHTML = "<tr>" + head.map((h) => "<th>" + esc(h) + "</th>").join("") + "</tr>" +
+    rows.map((r) => "<tr>" + r.map((c) => "<td>" + c + "</td>").join("") + "</tr>").join("");
+}
+function card(k, v, s){ return '<div class="card"><div class="k">' + esc(k) + '</div><div class="v">' + v + '</div><div class="s">' + esc(s || "") + '</div></div>'; }
+async function boot(){
+  let m;
+  try {
+    const response = await fetch("/api/metrics");
+    if (!response.ok) throw new Error(await response.text());
+    m = await response.json();
+  } catch (error){
+    $("error").textContent = "Metrics unavailable: " + error.message + " — run python -m flameguard.evaluate";
+    return;
+  }
+  $("error").hidden = true; $("content").hidden = false;
+  const banners = [];
+  if (m.reduced_claims) banners.push('<div class="banner bad"><strong>REDUCED CLAIMS:</strong> ' + m.n_runs + ' labelled runs, gate ' + m.gate + '. Do not present this as a validated system.</div>');
+  if (m.provenance_warning) banners.push('<div class="banner"><strong>Provenance:</strong> ' + m.tier_a + ' published labels, ' + (m.n_runs - m.tier_a) + ' derived. Published-only metrics are in the basis table.</div>');
+  $("banners").innerHTML = banners.join("");
+  $("cards").innerHTML = [
+    card("Accuracy", num(m.accuracy), "95% CI " + ci(m.accuracy_ci)),
+    card("Macro-F1", num(m.macro_f1), "95% CI " + ci(m.macro_f1_ci)),
+    card("ECE", num(m.ece), "10 equal-frequency bins"),
+    card("Brier", num(m.brier), "macro over 3 classes"),
+    card("Abstention", pct(m.abstention_rate), m.review_count + " of " + m.split.test + " held-out"),
+    card("Selective accuracy", num(m.selective_accuracy), "on " + (m.split.test - m.review_count) + " auto-cleared"),
+    card("Labels", String(m.n_runs), m.tier_a + " published / " + (m.n_runs - m.tier_a) + " derived"),
+    card("Test rows", String(m.split.test), "train " + m.split.train)
+  ].join("");
+  table($("per-class"), ["class","precision","recall","F1","support"],
+    Object.entries(m.per_class).map(([k,v]) => [esc(k), num(v.precision), num(v.recall), num(v.f1), String(v.support)]));
+  const classes = m.model.classes;
+  table($("confusion"), ["actual \\ predicted"].concat(classes),
+    m.confusion.map((row, i) => [esc(classes[i])].concat(row.map(String))));
+  table($("reliability"), ["bin","n","mean confidence","accuracy"],
+    m.reliability.map((r) => [String(r.bin), String(r.n), num(r.confidence), num(r.accuracy)]));
+  table($("abstention"), ["tau","coverage","review rate","accuracy on auto-clear"],
+    m.abstention.grid.map((r) => [num(r.tau) + (r.tau === m.abstention.tau ? " (chosen)" : ""), num(r.coverage), num(r.review_rate), num(r.accuracy_auto)]));
+  table($("per-family"), ["family","n","accuracy","macro-F1","abstention","note"],
+    m.per_family.map((r) => [esc(r.name), String(r.n), num(r.accuracy), num(r.macro_f1), num(r.abstention_rate), r.insufficient_n ? "insufficient n" : ""]));
+  table($("per-basis"), ["basis","n","accuracy","macro-F1","abstention"],
+    m.per_basis.map((r) => [esc(r.name), String(r.n), num(r.accuracy), num(r.macro_f1), num(r.abstention_rate)]));
+  if (!m.misclassified.length){ $("misclassified").innerHTML = '<p class="empty">None in this split.</p>'; }
+  else table($("misclassified"), ["run","family","actual","predicted","confidence","basis","source"],
+    m.misclassified.map((r) => [esc(r.run_id), esc(r.family), esc(r.actual), esc(r.predicted), num(r.confidence), esc(r.label_basis), esc(r.source.doc_id + " table " + r.source.table)]));
+  $("limitations").textContent = "Engine: " + ((m.model && (m.model.engine_label || m.model.engine_kind)) || "unknown") +
+    " · feature mode: " + ((m.model && m.model.feature_mode) || "engine+margins") +
+    ". Read VALIDATION.md for the full limitations. This is not a flight-qualified procedure. " +
+    "Suppression strategies are a rule-based policy, not a learned classifier." +
+    ((m.model && m.model.engine_endpoint) ? " Endpoint: " + m.model.engine_endpoint + "." : "");
+}
+boot();
+</script>
+</body>
+</html>

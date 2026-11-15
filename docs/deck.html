@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>FlameGuard SI — 5-slide deck</title>
+<style>
+  :root{--bg:#0b0f16;--panel:#151c27;--line:#26313f;--txt:#e8eef7;--dim:#93a2b8;--accent:#5aa9ff;--warn:#f0b429;--good:#37c98b}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--txt);font:20px/1.5 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;overflow:hidden}
+  .slide{position:fixed;inset:0;display:none;padding:6vh 7vw;flex-direction:column;justify-content:center}
+  .slide.active{display:flex}
+  h1{font-size:clamp(30px,4.2vw,58px);margin:0 0 10px;letter-spacing:-.5px}
+  h2{font-size:clamp(22px,2.4vw,32px);margin:0 0 18px;color:var(--accent)}
+  p{max-width:70ch;color:var(--txt)} .dim{color:var(--dim)} .small{font-size:15px;color:var(--dim)}
+  .kicker{color:var(--accent);font-size:14px;letter-spacing:2px;text-transform:uppercase;margin-bottom:10px}
+  .grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px;max-width:1050px}
+  .box{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:18px}
+  .box .k{color:var(--dim);font-size:12px;text-transform:uppercase;letter-spacing:1px}
+  .box .v{font-size:34px;font-weight:700;margin-top:4px}
+  .flow{display:flex;align-items:center;gap:10px;flex-wrap:wrap;max-width:1100px}
+  .step{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px 14px;font-size:15px}
+  .arrow{color:var(--accent);font-size:22px}
+  ul{max-width:80ch;padding-left:22px} li{margin:7px 0}
+  .foot{position:fixed;bottom:18px;left:7vw;right:7vw;display:flex;justify-content:space-between;color:var(--dim);font-size:12px}
+  .warn{color:var(--warn)} .good{color:var(--good)}
+  .bar{height:10px;background:#0e141d;border-radius:6px;overflow:hidden;margin-top:8px}
+  .bar>i{display:block;height:100%;background:var(--accent)}
+  @media(max-width:800px){.grid{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+
+<section class="slide active">
+  <div class="kicker">NASA Space Apps 2026 · Challenge 7</div>
+  <h1>FlameGuard SI</h1>
+  <h2>A fire-safety decision assistant for freefall</h2>
+  <p>NASA has decades of microgravity combustion data. It tells you what happened in a test.
+  It does not tell you what to do about the cabin in front of you.</p>
+  <p class="small">The engine is a Jev-compatible typed decision contract: four <code>noul</code>
+  thresholds, one <code>choice</code>, one <code>score</code>. It is selectable (TypeSafe Jev,
+  OpenJev, or published-threshold margins). Calibration is validated against NASA-derived
+  outcomes; it is not inherited from the engine.</p>
+</section>
+
+<section class="slide">
+  <div class="kicker">Data</div>
+  <h2>167 labelled runs, every one traceable</h2>
+  <div class="grid">
+    <div class="box"><div class="k">Families</div><div class="v">5</div><div class="small">FLEX 100 · BASS-II 20 · BASS SIBAL 31 · Saffire 11 · SoFIE GEL 5</div></div>
+    <div class="box"><div class="k">Labels</div><div class="v">24 / 143</div><div class="small">published / derived by a locked policy</div></div>
+    <div class="box"><div class="k">Gate</div><div class="v">167 ≥ 150</div><div class="small">below 150 the UI would say reduced claims</div></div>
+    <div class="box"><div class="k">Provenance</div><div class="v warn">warning</div><div class="small">most labels are derived; published-only metrics are reported separately</div></div>
+  </div>
+  <p class="small" style="margin-top:18px">Every row carries doc_id, table, URL, source line, label and label_basis.
+  Duplicate condition states with conflicting labels are counted, not merged.</p>
+</section>
+
+<section class="slide">
+  <div class="kicker">Architecture</div>
+  <h2>Six typed questions, one calibrated combiner</h2>
+  <div class="flow">
+    <div class="step">Scenario<br><span class="small">material · geometry · O2 · pressure · flow</span></div>
+    <div class="arrow">→</div>
+    <div class="step">Typed contract<br><span class="small">4 noul · 1 choice · 1 score</span></div>
+    <div class="arrow">→</div>
+    <div class="step">8-vector<br><span class="small">thresholds + class probs + severity</span></div>
+    <div class="arrow">→</div>
+    <div class="step">LR + Platt<br><span class="small">fitted on 70% only</span></div>
+    <div class="arrow">→</div>
+    <div class="step">Verdict<br><span class="small">class · reason codes · strategy</span></div>
+  </div>
+  <p style="margin-top:22px">Cache-first: every response is keyed by a hash of state + question contract. A miss with no
+  network returns <code>needs_human_review</code>, never a fabricated answer. The endpoint is
+  <code>POST /v1/systemone</code>; the brief’s <code>/v1/jev:run</code> returns 404.</p>
+</section>
+
+<section class="slide">
+  <div class="kicker">Validation</div>
+  <h2>Held-out 30%, no test-set tuning</h2>
+  <div class="grid">
+    <div class="box"><div class="k">Accuracy</div><div class="v" data-metric="accuracy">pending</div><div class="small" data-metric="accuracy_ci"></div></div>
+    <div class="box"><div class="k">Macro-F1</div><div class="v" data-metric="macro_f1">pending</div><div class="small" data-metric="macro_f1_ci"></div></div>
+    <div class="box"><div class="k">ECE</div><div class="v" data-metric="ece">pending</div><div class="small">10 equal-frequency bins</div></div>
+    <div class="box"><div class="k">Brier</div><div class="v" data-metric="brier">pending</div><div class="small">macro over 3 classes</div></div>
+    <div class="box"><div class="k">Abstention</div><div class="v" data-metric="abstention_rate">pending</div><div class="small">tau chosen out-of-fold</div></div>
+    <div class="box"><div class="k">Labels</div><div class="v" data-metric="n_runs">167</div><div class="small" data-metric="basis">24 published / 143 derived</div></div>
+  </div>
+  <p class="small" style="margin-top:18px">Calibration is fitted on the 70% combiner-fit split and measured on the
+  held-out 30%. It is not inherited from the engine. The suppression strategy is a deterministic policy, not a learned classifier.
+  This is not a flight-qualified procedure.</p>
+</section>
+
+<section class="slide">
+  <div class="kicker">Roadmap</div>
+  <h2>What comes after the demo</h2>
+  <ul>
+    <li><strong>More Tier A labels:</strong> replace derived FLEX/Saffire labels with explicit published outcomes wherever the papers expose them.</li>
+    <li><strong>SoFIE/PSI ingestion:</strong> add the remaining experiment families and a stable schema adapter.</li>
+    <li><strong>Active learning:</strong> feed human review decisions back as labels; monitor drift by family.</li>
+    <li><strong>Onboard / edge:</strong> quantize the combiner and serve the same cached contract with a local fallback.</li>
+    <li><strong>Human-in-the-loop:</strong> make the abstention queue and reason codes the primary workflow, not an exception.</li>
+  </ul>
+</section>
+
+<div class="foot"><span>FlameGuard SI · NASA Space Apps 2026 · Challenge 7</span><span>← → to navigate · /deck</span></div>
+
+<script>
+const slides = Array.from(document.querySelectorAll(".slide"));
+let index = 0;
+function show(next){
+  index = Math.max(0, Math.min(slides.length - 1, next));
+  slides.forEach((slide, i) => slide.classList.toggle("active", i === index));
+}
+document.addEventListener("keydown", (event) => {
+  if (event.key === "ArrowRight" || event.key === "PageDown" || event.key === " ") show(index + 1);
+  if (event.key === "ArrowLeft" || event.key === "PageUp") show(index - 1);
+});
+document.addEventListener("click", () => show(index + 1));
+fetch("/api/metrics").then((response) => response.ok ? response.json() : null).then((metrics) => {
+  if (!metrics) return;
+  const pct = (v) => (v === null || v === undefined) ? "n/a" : (100*v).toFixed(1) + "%";
+  const num = (v) => (v === null || v === undefined) ? "n/a" : Number(v).toFixed(3);
+  const ci = (v) => v ? "95% CI [" + num(v[0]) + ", " + num(v[1]) + "]" : "";
+  const set = (name, value) => document.querySelectorAll('[data-metric="' + name + '"]').forEach((el) => el.textContent = value);
+  set("accuracy", pct(metrics.accuracy)); set("accuracy_ci", ci(metrics.accuracy_ci));
+  set("macro_f1", num(metrics.macro_f1)); set("macro_f1_ci", ci(metrics.macro_f1_ci));
+  set("ece", num(metrics.ece)); set("brier", num(metrics.brier));
+  set("abstention_rate", pct(metrics.abstention_rate));
+  set("n_runs", String(metrics.n_runs));
+  set("basis", metrics.tier_a + " published / " + (metrics.n_runs - metrics.tier_a) + " derived");
+}).catch(() => {});
+</script>
+</body>
+</html>

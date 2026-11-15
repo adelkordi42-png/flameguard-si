@@ -1,0 +1,124 @@
+{
+  "canonical": [
+    "Saffire-1-1",
+    "BASS-II-M7",
+    "BASS-II-M20",
+    "BASS-SIBAL-GMT190-T21",
+    "BASS-SIBAL-GMT175-T9",
+    "SoFIE-GEL-3"
+  ],
+  "novel": [
+    {
+      "id": "novel-01",
+      "title": "Thin PMMA, 19.5% O2, low flow",
+      "scenario": {
+        "material": "PMMA",
+        "geometry": "flat_sheet",
+        "thickness_mm": 2.0,
+        "o2_percent": 19.5,
+        "pressure_kpa": 101.3,
+        "opposed_flow_cm_s": 8.0,
+        "igniter": "hot_wire",
+        "gravity": "microgravity"
+      }
+    },
+    {
+      "id": "novel-02",
+      "title": "Thick PMMA, 16.5% O2",
+      "scenario": {
+        "material": "PMMA",
+        "geometry": "flat_sheet",
+        "thickness_mm": 4.0,
+        "o2_percent": 16.5,
+        "pressure_kpa": 101.3,
+        "opposed_flow_cm_s": 12.0,
+        "igniter": "hot_wire",
+        "gravity": "microgravity"
+      }
+    },
+    {
+      "id": "novel-03",
+      "title": "SIBAL fabric, 18% O2, 6 cm/s",
+      "scenario": {
+        "material": "SIBAL_fabric",
+        "geometry": "flat_sheet",
+        "thickness_mm": 0.32,
+        "o2_percent": 18.0,
+        "pressure_kpa": 101.3,
+        "opposed_flow_cm_s": 6.0,
+        "igniter": "hot_wire",
+        "gravity": "microgravity"
+      }
+    },
+    {
+      "id": "novel-04",
+      "title": "Silicone, 21% O2, 20 cm/s",
+      "scenario": {
+        "material": "silicone",
+        "geometry": "flat_sheet",
+        "thickness_mm": 0.61,
+        "o2_percent": 21.0,
+        "pressure_kpa": 101.3,
+        "opposed_flow_cm_s": 20.0,
+        "igniter": "hot_wire",
+        "gravity": "microgravity"
+      }
+    },
+    {
+      "id": "novel-05",
+      "title": "PMMA, 24% O2, 75 kPa",
+      "scenario": {
+        "material": "PMMA",
+        "geometry": "flat_sheet",
+        "thickness_mm": 1.0,
+        "o2_percent": 24.0,
+        "pressure_kpa": 75.0,
+        "opposed_flow_cm_s": 3.0,
+        "igniter": "hot_wire",
+        "gravity": "microgravity"
+      }
+    },
+    {
+      "id": "novel-06",
+      "title": "PMMA sphere, 15% O2, 107 kPa",
+      "scenario": {
+        "material": "PMMA",
+        "geometry": "sphere",
+        "thickness_mm": 40.0,
+        "o2_percent": 15.0,
+        "pressure_kpa": 107.0,
+        "opposed_flow_cm_s": 20.0,
+        "igniter": "hot_wire",
+        "gravity": "microgravity"
+      }
+    },
+    {
+      "id": "novel-07",
+      "title": "Methanol droplet, 3 mm, 21% O2",
+      "scenario": {
+        "material": "methanol",
+        "geometry": "droplet",
+        "thickness_mm": 3.0,
+        "o2_percent": 21.0,
+        "pressure_kpa": 101.3,
+        "opposed_flow_cm_s": 0.0,
+        "igniter": "hot_wire",
+        "gravity": "microgravity"
+      }
+    },
+    {
+      "id": "novel-08",
+      "title": "Heptane droplet, 2.5 mm, 13.5% O2",
+      "scenario": {
+        "material": "heptane",
+        "geometry": "droplet",
+        "thickness_mm": 2.5,
+        "o2_percent": 13.5,
+        "pressure_kpa": 71.0,
+        "opposed_flow_cm_s": 0.0,
+        "igniter": "hot_wire",
+        "gravity": "microgravity"
+      }
+    }
+  ]
+}

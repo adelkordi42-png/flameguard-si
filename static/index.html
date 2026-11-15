@@ -3,70 +3,76 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>FlameGuard SI — spacecraft cabin fire verdict</title>
+<title>FlameGuard SI — microgravity fire verdict</title>
 <style>
   :root{--bg:#0b0f16;--panel:#151c27;--line:#26313f;--txt:#e8eef7;--dim:#93a2b8;--accent:#5aa9ff;
         --bad:#ff5f56;--warn:#f0b429;--good:#37c98b;--review:#a78bfa;--neutral:#93a2b8}
   *{box-sizing:border-box}
   body{margin:0;background:var(--bg);color:var(--txt);font:15px/1.55 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
-  header{padding:22px 26px 12px;border-bottom:1px solid var(--line)}
-  h1{margin:0;font-size:24px;letter-spacing:.4px}
-  h1 span{color:var(--accent)}
+  header{padding:22px 26px 14px;border-bottom:1px solid var(--line)}
+  h1{margin:0;font-size:24px;letter-spacing:.4px} h1 span{color:var(--accent)}
   h2{font-size:13px;text-transform:uppercase;letter-spacing:1.2px;color:var(--dim);margin:0 0 12px}
-  .tag{color:var(--dim);margin:6px 0 10px;max-width:70ch}
-  .badge{display:inline-block;padding:3px 10px;border-radius:999px;font-size:12px;border:1px solid var(--line)}
-  .badge.synth{background:#3a2410;border-color:#7a4a12;color:#ffcc80}
-  .badge.real{background:#10291d;border-color:#1d5c3f;color:#8ee0b4}
-  main{display:grid;grid-template-columns:minmax(320px,420px) 1fr;gap:22px;padding:22px 26px}
-  section{margin:0}
+  .tag{color:var(--dim);margin:6px 0 10px;max-width:78ch}
+  .badges{display:flex;gap:8px;flex-wrap:wrap}
+  .badge{display:inline-block;padding:3px 10px;border-radius:999px;font-size:12px;border:1px solid var(--line);color:var(--dim)}
+  .badge.ok{background:#10291d;border-color:#1d5c3f;color:#8ee0b4}
+  .badge.warn{background:#3a2410;border-color:#7a4a12;color:#ffcc80}
+  .badge.bad{background:#3a1515;border-color:#7a2020;color:#ff9b95}
+  main{display:grid;grid-template-columns:minmax(320px,430px) 1fr;gap:22px;padding:22px 26px}
   .panel{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:18px}
-  .field{display:grid;grid-template-columns:1fr 130px;align-items:center;gap:10px;margin-bottom:10px}
+  .field{display:grid;grid-template-columns:1fr 145px;align-items:center;gap:10px;margin-bottom:10px}
   .field small{grid-column:2;color:var(--dim);font-size:11px;text-align:right}
   input,select{background:#0e141d;color:var(--txt);border:1px solid var(--line);border-radius:7px;padding:7px 9px;font:inherit;width:100%}
   button{background:var(--accent);color:#04101f;border:0;border-radius:8px;padding:11px 16px;font:inherit;font-weight:600;cursor:pointer}
   button:disabled{opacity:.55;cursor:progress}
-  .presets{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0}
-  .presets button{background:#1d2836;color:var(--txt);font-weight:500;padding:7px 11px;font-size:13px;border:1px solid var(--line)}
+  .presets{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+  .presets button{background:#1d2836;color:var(--txt);font-weight:500;padding:7px 11px;font-size:12px;border:1px solid var(--line)}
   .verdict-head{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap}
-  .verdict-name{font-size:26px;font-weight:700}
+  .verdict-name{font-size:27px;font-weight:700}
   .v-bad{color:var(--bad)}.v-warn{color:var(--warn)}.v-good{color:var(--good)}.v-review{color:var(--review)}
-  .bar{height:9px;border-radius:6px;background:#0e141d;overflow:hidden;margin:5px 0}
+  .bar{height:9px;border-radius:6px;background:#0e141d;overflow:hidden;margin:7px 0}
   .bar>i{display:block;height:100%;background:var(--accent)}
   .prob{display:grid;grid-template-columns:150px 1fr 58px;gap:10px;align-items:center;font-size:13px;margin-bottom:3px}
   .note{color:var(--dim);font-size:12px}
+  .chips{display:flex;gap:6px;flex-wrap:wrap;margin:10px 0}
+  .chip{font-size:11px;border:1px solid var(--line);border-radius:999px;padding:2px 8px;color:var(--dim)}
   .strategy{border-left:3px solid var(--accent);padding:10px 12px;background:#101823;border-radius:0 8px 8px 0;margin:12px 0}
   .warnbox{border-left:3px solid var(--warn);padding:10px 12px;background:#241c0c;border-radius:0 8px 8px 0;margin:12px 0}
   .error{color:var(--bad)}
   table{width:100%;border-collapse:collapse;font-size:13px}
-  th,td{text-align:left;padding:7px 9px;border-bottom:1px solid var(--line)}
+  th,td{text-align:left;padding:7px 9px;border-bottom:1px solid var(--line);vertical-align:top}
   th{color:var(--dim);font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.6px}
-  tr.prime{background:#101823}
-  #comparison{padding:0 26px 30px}
-  footer{padding:0 26px 34px;color:var(--dim);font-size:12px;max-width:100ch}
+  a{color:var(--accent)}
+  #comparison,#novel-wrap{padding:0 26px 22px}
+  footer{padding:0 26px 34px;color:var(--dim);font-size:12px;max-width:110ch}
   .empty{color:var(--dim);font-style:italic}
+  .small{font-size:11px;color:var(--dim)}
   @media(max-width:900px){main{grid-template-columns:1fr}}
 </style>
 </head>
 <body>
 <header>
   <h1>FlameGuard <span>SI</span></h1>
-  <p class="tag">Enter a spacecraft cabin fire scenario and get a calibrated flammability verdict in
-  under a second — placed beside the real labelled runs it was validated against. When the model is not
-  confident enough, it says so and defers to a human instead of guessing.</p>
-  <div id="provenance" class="badge">loading model…</div>
+  <p class="tag">A fire-safety decision layer for spacecraft cabins. Enter a microgravity scenario and get a
+  calibrated flammability verdict, typed reason codes, and a suppression strategy. When the evidence is not
+  sufficient, the system says so and defers to a human.</p>
+  <div class="badges">
+    <span id="engine-badge" class="badge">engine: loading</span>
+    <span id="gate-badge" class="badge">data: loading</span>
+    <span id="provenance-badge" class="badge">provenance: loading</span>
+  </div>
 </header>
 
 <main>
-  <section id="form-panel">
+  <section>
     <div class="panel">
       <h2>1 — Cabin scenario</h2>
       <form id="scenario-form" autocomplete="off"></form>
-      <div class="presets" id="presets"></div>
       <button id="submit" type="button" disabled>Assess scenario</button>
       <p id="form-error" class="error" hidden></p>
     </div>
   </section>
-  <section id="verdict-panel">
+  <section>
     <div class="panel">
       <h2>2 — Verdict</h2>
       <div id="verdict"><p class="empty">Submit a scenario to see the verdict.</p></div>
@@ -76,29 +82,38 @@
 
 <section id="comparison">
   <div class="panel">
-    <h2>3 — Versus the actual labelled runs</h2>
-    <div id="similar"><p class="empty">Nearest experimental runs will appear here after an assessment.</p></div>
+    <h2>3 — Predicted vs. actual NASA outcome (held-out canonical cases)</h2>
+    <div id="canonical"><p class="empty">Loading canonical cases…</p></div>
   </div>
 </section>
 
-<footer id="footer"></footer>
+<section id="novel-wrap">
+  <div class="panel">
+    <h2>4 — Novel scenarios (no published outcome)</h2>
+    <p class="note">These are in-envelope combinations, not test cases from the papers. They are excluded from validation.</p>
+    <div class="presets" id="novel"></div>
+  </div>
+</section>
+
+<footer id="footer">
+  <p><strong>Calibration:</strong> fitted and validated on NASA-derived runs (70/30 split); it is not inherited from the decision model.
+  The model returns typed signals, not guaranteed-correct ones. <a href="/metrics">Metrics</a> ·
+  <a href="/VALIDATION.md">VALIDATION.md</a></p>
+  <p id="basis-note"></p>
+</footer>
 
 <script>
-const VERDICT_LABEL = {sustained_spread:"Sustained spread", marginal:"Marginal", extinction:"Extinction", needs_human_review:"Needs human review"};
-const state = {meta:null};
+const CLASS_LABEL = {sustained_spread:"Sustained spread", marginal:"Marginal", extinction:"Extinction", needs_human_review:"Needs human review"};
+const ENGINE_LABEL = {jev_live:"Jev live", jev_cache:"Jev cached", llm_live:"Model live", llm_cache:"Model cached", margin_fallback:"Physics margins", jev_skipped_ood:"Skipped (OOD)", unavailable:"Model unavailable"};
+const state = {meta:null, cases:null};
 const $ = (id) => document.getElementById(id);
-const pct = (v) => (100*v).toFixed(1) + "%";
+const pct = (v) => (v === null || v === undefined) ? "n/a" : (100*v).toFixed(1) + "%";
 const ESCAPES = {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"};
 const esc = (v) => String(v === undefined || v === null ? "" : v).replace(/[&<>"']/g, (c) => ESCAPES[c]);
-const label = (key) => VERDICT_LABEL[key] || key;
+const label = (key) => CLASS_LABEL[key] || key;
 
 function showError(text){ const box = $("form-error"); box.hidden = false; box.textContent = text; }
 function clearError(){ $("form-error").hidden = true; }
-function resetPanels(verdictText, similarText){
-  $("verdict").innerHTML = '<p class="empty">' + esc(verdictText) + '</p>';
-  $("similar").innerHTML = '<p class="empty">' + esc(similarText) + '</p>';
-}
-
 function colorFor(key){
   if (key === "sustained_spread") return "bad";
   if (key === "marginal") return "warn";
@@ -106,19 +121,18 @@ function colorFor(key){
   if (key === "needs_human_review") return "review";
   return "neutral";
 }
-
-function fieldFor(name, spec){
+function fieldFor(spec){
   const wrap = document.createElement("label");
   wrap.className = "field";
   const text = document.createElement("span");
-  text.textContent = name;
+  text.textContent = spec.name === "thickness_mm" ? "Thickness / diameter (mm)" : spec.name.replace(/_/g, " ");
   wrap.appendChild(text);
   let input;
   if (spec.kind === "numeric"){
     input = document.createElement("input");
     input.type = "number"; input.step = "any"; input.required = true;
     input.min = spec.min; input.max = spec.max;
-    input.value = ((spec.min + spec.max)/2).toFixed(3);
+    input.value = spec.mean;
   } else {
     input = document.createElement("select");
     for (const category of spec.categories){
@@ -127,197 +141,162 @@ function fieldFor(name, spec){
       input.appendChild(option);
     }
   }
-  input.id = "f-" + name;
+  input.id = "f-" + spec.name;
   wrap.appendChild(input);
   const hint = document.createElement("small");
-  hint.textContent = spec.kind === "numeric"
-    ? "observed " + spec.min + " … " + spec.max
-    : spec.categories.length + " categories";
+  hint.textContent = spec.kind === "numeric" ? "observed " + spec.min + " … " + spec.max : spec.categories.length + " observed";
   wrap.appendChild(hint);
   return wrap;
 }
-
 function payload(){
   const out = {};
-  for (const [name, spec] of Object.entries(state.meta.features)){
-    const el = $("f-" + name);
-    out[name] = spec.kind === "numeric" ? Number(el.value) : el.value;
+  for (const spec of state.meta.fields){
+    const el = $("f-" + spec.name);
+    out[spec.name] = spec.kind === "numeric" ? Number(el.value) : el.value;
   }
   return out;
 }
-
-function applyPreset(mode){
-  const roles = state.meta.roles || {};
-  for (const [name, spec] of Object.entries(state.meta.features)){
-    const el = $("f-" + name);
-    if (spec.kind === "categorical"){ el.selectedIndex = 0; continue; }
-    const mid = (spec.min + spec.max)/2;
-    let value = mid;
-    if (name === roles.o2) value = mode === "rich" ? spec.max : mode === "lean" ? spec.min : mid;
-    else if (name === roles.flow) value = mode === "rich" ? spec.min : mode === "lean" ? spec.max : mid;
-    el.value = value;
+function applyScenario(scenario){
+  for (const spec of state.meta.fields){
+    const el = $("f-" + spec.name);
+    if (scenario[spec.name] !== undefined) el.value = scenario[spec.name];
   }
 }
-
-const bar = (value, color) => '<div class="bar"><i style="width:' + (100*value).toFixed(1) + '%;' +
-  'background:var(--' + color + ')"></i></div>';
-
-function abstainSentence(body){
-  if (body.abstain_reason === "ambiguous_top_classes") return "the top two classes are closer than the decision margin";
-  if (body.abstain_reason === "input_outside_observed_range") return "the scenario lies outside the range covered by the training runs";
-  return "the calibrated confidence is below the decision threshold";
+async function getJSON(url, options){
+  const response = await fetch(url, options || {});
+  const text = await response.text();
+  let body = null;
+  try { body = JSON.parse(text); } catch (error) { body = null; }
+  if (!response.ok) throw new Error((body && body.detail) ? JSON.stringify(body.detail).slice(0, 200) : text.slice(0, 200));
+  return body;
 }
-
+function renderBadges(meta){
+  const engine = $("engine-badge");
+  engine.className = "badge";
+  engine.textContent = (meta.engine_label || "engine") +
+    (meta.feature_mode ? " · " + meta.feature_mode : "") +
+    (meta.model_name && meta.model_name !== "published-threshold margins" ? " · " + meta.model_name : "");
+  const gate = $("gate-badge");
+  if (meta.reduced_claims){
+    gate.className = "badge bad";
+    gate.textContent = "REDUCED CLAIMS: " + meta.n_runs + " < " + meta.gate;
+  } else {
+    gate.className = "badge ok";
+    gate.textContent = meta.n_runs + " runs · " + meta.tier_a + " published / " + meta.basis_counts.derived + " derived";
+  }
+  const prov = $("provenance-badge");
+  if (meta.provenance_warning){
+    prov.className = "badge warn";
+    prov.textContent = "provenance warning: " + meta.tier_a + " published labels";
+  } else {
+    prov.className = "badge";
+    prov.textContent = "provenance: " + meta.tier_a + " published labels";
+  }
+  $("basis-note").textContent = "Suppression: " + meta.suppression_basis + ". Data: " + meta.data_version + " · schema " + meta.schema_version + ".";
+}
 function renderVerdict(body){
   const key = body.verdict;
   const color = colorFor(key);
-  const probabilities = Object.entries(body.probabilities).sort((a,b) => b[1]-a[1])
+  const engineText = (body.engine_label || ENGINE_LABEL[body.engine] || body.engine || "engine") +
+    (body.model_name && body.model_name !== "published-threshold margins" ? " · " + body.model_name : "");
+  const healthy = ["jev_live","jev_cache","llm_live","llm_cache","margin_fallback"].includes(body.engine);
+  $("engine-badge").textContent = engineText;
+  $("engine-badge").className = "badge " + (healthy ? "ok" : "warn");
+  const probabilities = body.probabilities ? Object.entries(body.probabilities).sort((a,b) => b[1]-a[1])
     .map(([name, value]) => '<div class="prob"><span>' + esc(label(name)) + '</span>' +
-      bar(value, colorFor(name)) + '<span>' + pct(value) + '</span></div>').join("");
+      '<div class="bar"><i style="width:' + (100*value).toFixed(1) + '%;background:var(--' + colorFor(name) + ')"></i></div>' +
+      '<span>' + pct(value) + '</span></div>').join("") : "";
   const abstainBox = body.abstain
     ? '<div class="warnbox"><strong>Abstained — needs human review.</strong> ' +
-      esc(abstainSentence(body)) + ' (<code>' + esc(body.abstain_reason) + '</code>). ' +
-      'Calibrated confidence ' + pct(body.confidence) + '.</div>'
-    : "";
+      esc(body.abstain_reason || "insufficient evidence") + '. ' +
+      (body.calibrated_probability === null ? "No probability is available." : "Calibrated confidence " + pct(body.calibrated_probability) + ".") +
+      '</div>' : "";
+  const chips = (body.reason_codes || []).map((code) => '<span class="chip">' + esc(code) + '</span>').join("");
+  const jev = body.jev ? '<p class="small">Decision model ' + esc(body.jev.model) + ' · ' + esc(body.jev.engine) +
+    ' · six typed answers · source latency ' + (body.jev.source_latency_ms == null ? "n/a" : esc(body.jev.source_latency_ms) + " ms") + '</p>' : "";
   $("verdict").innerHTML =
     '<div class="verdict-head"><span class="verdict-name v-' + color + '">' + esc(label(key)) + '</span>' +
-      '<span class="note">calibrated confidence ' + pct(body.confidence) + ' · ' + esc(body.latency_ms) + ' ms · ' +
-      esc(body.model_version) + '</span></div>' + abstainBox +
-    bar(body.confidence, color) + '<div style="margin:14px 0 4px" class="note">Class probabilities</div>' +
-    probabilities +
-    '<div class="strategy"><strong>Recommended suppression strategy</strong><br>' + esc(body.suppression) + '</div>' +
-    '<p class="note">' + esc(body.suppression_basis) + '.</p>';
+      '<span class="note">' + pct(body.calibrated_probability) + ' · ' + esc(body.latency_ms) + ' ms · ' +
+      esc(body.engine || "") + '</span></div>' + abstainBox +
+    '<div class="bar"><i style="width:' + (body.calibrated_probability === null ? 0 : 100*body.calibrated_probability).toFixed(1) + '%;background:var(--' + color + ')"></i></div>' +
+    (probabilities ? '<div class="note" style="margin-top:10px">Class probabilities</div>' + probabilities : "") +
+    '<div class="chips">' + chips + '</div>' +
+    '<div class="strategy"><strong>Suppression strategy: ' + esc(body.suppression_strategy) + '</strong><br>' + esc(body.suppression_detail) + '</div>' +
+    '<p class="note">' + esc(body.suppression_basis) + '.</p>' + jev +
+    (body.note ? '<p class="note">' + esc(body.note) + '</p>' : "");
 }
-
-function renderSimilar(body){
-  const runs = body.similar_runs || [];
-  if (!runs.length){ $("similar").innerHTML = '<p class="empty">No labelled runs matched.</p>'; return; }
-  const columns = Object.keys(runs[0].record);
-  const head = "<tr><th>Rank</th><th>Distance</th><th>Actual outcome recorded</th>" +
-    columns.map(c => "<th>" + esc(c) + "</th>").join("") + "<th>Agrees with verdict?</th></tr>";
-  const rows = runs.map((run, index) => {
-    const agrees = run.actual_label === body.raw_verdict;
-    return "<tr" + (index === 0 ? ' class="prime"' : "") + "><td>" + (index+1) + "</td><td>" + esc(run.distance) +
-      '</td><td><strong class="v-' + colorFor(run.actual_label) + '">' +
-      esc(label(run.actual_label)) + "</strong></td>" +
-      columns.map(c => "<td>" + esc(run.record[c]) + "</td>").join("") +
-      "<td>" + (agrees ? "yes" : "no") + "</td></tr>";
+function renderCanonical(data){
+  const rows = data.canonical || [];
+  if (!rows.length){ $("canonical").innerHTML = '<p class="empty">No canonical cases.</p>'; return; }
+  const head = "<tr><th>Run</th><th>Family</th><th>Scenario</th><th>Actual</th><th>Predicted</th><th>Prob.</th><th>Match</th><th>Basis</th><th>Source</th></tr>";
+  const body = rows.map((row) => {
+    const s = row.scenario;
+    const scenario = esc(s.material) + " · " + esc(s.o2_percent) + "% O2 · " + esc(s.pressure_kpa) + " kPa · " + esc(s.opposed_flow_cm_s) + " cm/s";
+    const predicted = row.predicted ? esc(label(row.predicted)) + (row.abstained ? " <span class='small'>(review)</span>" : "") : "<span class='small'>not cached</span>";
+    const match = row.match === null || row.match === undefined ? "—" : (row.match ? "yes" : "no");
+    const source = row.source ? '<a href="' + esc(row.source.url) + '" target="_blank" rel="noopener">' + esc(row.source.doc_id) + "·" + esc(row.source.table) + "</a>" : "—";
+    return "<tr><td>" + esc(row.run_id) + "</td><td>" + esc(row.family) + "</td><td>" + scenario + "</td><td><strong class='v-" + colorFor(row.actual_label) + "'>" + esc(label(row.actual_label)) + "</strong></td><td>" + predicted + "</td><td>" + pct(row.probability) + "</td><td>" + match + "</td><td>" + esc(row.label_basis) + "</td><td>" + source + "</td></tr>";
   }).join("");
-  $("similar").innerHTML =
-    '<p class="note">The ' + runs.length + ' labelled runs closest to this scenario in standardised feature space. ' +
-    'The model verdict was <strong>' + esc(label(body.raw_verdict)) + '</strong>' +
-    (body.abstain ? ' (overridden to <strong>needs human review</strong> by the abstention rule)' : '') + '.</p>' +
-    "<table>" + head + rows + "</table>";
+  $("canonical").innerHTML = "<table>" + head + body + "</table>" +
+    '<p class="note">Held-out rows; the probability is the calibrated combiner output. “Review” means the abstention rule fired; the raw class is shown for comparison.</p>';
 }
-
-function describeErrors(detail){
-  if (Array.isArray(detail)) return detail.map(e => ((e.loc || []).join(".") || "input") + ": " + e.msg).join("; ");
-  if (typeof detail === "string") return detail;
-  return "";
+function renderNovel(data){
+  const box = $("novel");
+  if (!data.novel || !data.novel.length){ box.innerHTML = '<p class="empty">No novel cases.</p>'; return; }
+  data.novel.forEach((item) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.textContent = item.title + (item.predicted ? " · " + (ENGINE_LABEL[item.engine] || item.engine) : "");
+    button.onclick = () => { clearError(); applyScenario(item.scenario); assess(); };
+    box.appendChild(button);
+  });
 }
-
 async function assess(){
   clearError();
+  if (!state.meta) return;
   const form = $("scenario-form");
   if (form && typeof form.reportValidity === "function" && !form.reportValidity()) return;
-  for (const [name, spec] of Object.entries(state.meta.features)){
-    if (spec.kind === "numeric"){
-      const raw = $("f-" + name).value;
-      if (raw === "" || Number.isNaN(Number(raw))){
-        showError("Enter a number for " + name + ".");
-        return;
-      }
-    }
-  }
   const button = $("submit");
   button.disabled = true; button.textContent = "Assessing…";
-  resetPanels("Assessing…", "—");
   try {
-    const response = await fetch("/api/predict", {
-      method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(payload())
-    });
-    const raw = await response.text();
-    let body = null;
-    try { body = JSON.parse(raw); } catch (error) { body = null; }
-    if (!response.ok){
-      const detail = body ? describeErrors(body.detail) : raw.slice(0, 200);
-      showError((response.status === 422 ? "Scenario failed schema validation" : "Service error") +
-        " (" + response.status + ") — " + detail);
-      resetPanels("No verdict: " + (response.status === 422 ? "the scenario failed schema validation." : "the service returned an error."), "—");
-      return;
-    }
-    if (!body){ showError("Malformed response from the service."); resetPanels("No verdict: unreadable response.", "—"); return; }
-    renderVerdict(body); renderSimilar(body);
+    const body = await getJSON("/api/predict", {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(payload())});
+    renderVerdict(body);
   } catch (error){
-    showError("Request failed: " + error);
-    resetPanels("No verdict: the request did not complete.", "—");
+    showError("Request failed: " + error.message);
+    $("verdict").innerHTML = '<p class="empty">No verdict: the request did not complete.</p>';
   } finally {
     button.disabled = false; button.textContent = "Assess scenario";
   }
 }
-
-function renderProvenance(meta){
-  const synthetic = meta.data_source !== "provided";
-  const badge = $("provenance");
-  badge.className = "badge " + (synthetic ? "synth" : "real");
-  badge.textContent = synthetic
-    ? "⚠ trained on SYNTHETIC placeholder data — verdicts are NOT NASA-validated"
-    : "✓ trained on the provided NASA-labelled dataset (" + meta.training_rows + " runs)";
-}
-
-function renderFooter(meta){
-  const metrics = meta.metrics || {};
-  const synthetic = meta.data_source !== "provided";
-  const abstention = metrics.abstention || {};
-  const accuracy = typeof metrics.accuracy === "number" ? metrics.accuracy.toFixed(3) : "n/a";
-  const baseline = typeof metrics.baseline_macro_f1 === "number" ? metrics.baseline_macro_f1.toFixed(3) : "n/a";
-  $("footer").innerHTML =
-    "<strong>Abstention rule:</strong> a verdict is withheld when the top calibrated probability is below " +
-    esc(meta.tau_global) + ", when the top two classes are within " + esc(meta.tau_margin) + " of each other, " +
-    "or when an input falls outside the observed training range. The threshold is tuned on cross-validated folds: " +
-    (typeof abstention.review_rate === "number" ? pct(abstention.review_rate) + " of held-out runs are deferred to a human." : "see metrics.json.") +
-    "<br><strong>Model:</strong> " + (metrics.calibrated ? "Platt-calibrated " : "") + "gradient-boosted trees · held-out accuracy " +
-    accuracy + " · baseline macro F1 " + baseline + " · " + esc(metrics.split || "cross-validated") + " · " +
-    esc(meta.k_neighbours) + " neighbours per comparison.<br><strong>Provenance:</strong> " +
-    (synthetic ? "SYNTHETIC placeholder" : "provided dataset") + " — see validation.md.";
-}
-
 async function boot(){
   let meta;
   try {
-    const response = await fetch("/api/meta");
-    if (!response.ok){
-      const detail = await response.text();
-      throw new Error(response.status + " " + detail.slice(0, 120));
-    }
-    meta = await response.json();
+    meta = await getJSON("/api/meta");
   } catch (error){
-    showError("Model unavailable: " + error);
-    $("provenance").className = "badge synth";
-    $("provenance").textContent = "model unavailable — run python -m flameguard.train";
+    $("engine-badge").textContent = "Model unavailable";
+    $("engine-badge").className = "badge bad";
+    $("gate-badge").textContent = "run: python -m flameguard.dataset --audit";
+    $("gate-badge").className = "badge bad";
+    $("canonical").innerHTML = '<p class="empty">Model unavailable: ' + esc(error.message) + '</p>';
     return;
   }
   state.meta = meta;
   const form = $("scenario-form");
-  for (const [name, spec] of Object.entries(meta.features)) form.appendChild(fieldFor(name, spec));
-  const roles = meta.roles || {};
-  if (roles.o2 && roles.flow){
-    [["rich","Oxygen-rich, quiescent flow"],["lean","Inerted, high opposed flow"],["mid","Mid-range baseline"]]
-      .forEach(([mode, text]) => {
-        const button = document.createElement("button");
-        button.type = "button"; button.textContent = text;
-        button.onclick = () => { clearError(); applyPreset(mode); };
-        $("presets").appendChild(button);
-      });
-  }
+  for (const spec of meta.fields) form.appendChild(fieldFor(spec));
+  renderBadges(meta);
   $("submit").disabled = false;
   $("submit").onclick = assess;
   form.onsubmit = (event) => { event.preventDefault(); assess(); };
-  renderProvenance(meta); renderFooter(meta);
-  applyPreset("mid");
+  try {
+    state.cases = await getJSON("/api/cases");
+    renderCanonical(state.cases);
+    renderNovel(state.cases);
+  } catch (error){
+    $("canonical").innerHTML = '<p class="empty">Canonical cases unavailable: ' + esc(error.message) + '</p>';
+  }
+  applyScenario(meta.defaults);
   assess();
 }
-
 boot();
 </script>
 </body>

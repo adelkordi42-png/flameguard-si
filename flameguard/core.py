@@ -1,63 +1,90 @@
-"""FlameGuard SI — shared core.
+"""FlameGuard SI — shared domain core.
 
-Schema discovery, CSV I/O, feature encoding, abstention rule, suppression
-lookup and nearest-neighbour retrieval. Imported by both the training
-pipeline (``flameguard.train``) and the inference service (``flameguard.api``)
-so that the two can never disagree about the schema.
+Constants, non-blocking logging, JSON/cache I/O, the physical bands used by the
+suppression policy, abstention, and the runtime request schema. Imported by the
+dataset builder, evaluator, precompute tool and API so those four cannot drift.
 """
 
 from __future__ import annotations
 
-import csv
-import io
+import hashlib
 import json
 import logging
 import logging.handlers
+import os
 import queue
-import re
 import sys
+import tempfile
+import threading
+import time
+from contextlib import contextmanager
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Literal
 
-import joblib
-import numpy as np
 from pydantic import BaseModel, ConfigDict, Field, create_model
+
+try:  # Linux is the deployment target; the fallback keeps local tests portable.
+    import fcntl
+except ImportError:  # pragma: no cover
+    fcntl = None
 
 ROOT = Path(__file__).resolve().parent.parent
 ARTIFACT_DIR = ROOT / "artifacts"
+CACHE_PATH = ROOT / "engine_cache.json"
+SCHEMA_VERSION = "2026-11-15.2"
 
-CLASSES = ("sustained_spread", "marginal", "extinction")
+CLASSES = ("extinction", "marginal", "sustained_spread")
 VERDICT_REVIEW = "needs_human_review"
-EXTINCTION_MARKERS = (
-    "extinct",
-    "extinguish",
-    "quench",
-    "no spread",
-    "did not spread",
-    "not spread",
-    "no flame",
-    "did not ignite",
-    "no ignition",
-    "failed to ignite",
-    "stopped",
-    "nonflammable",
-    "non flammable",
-    "self extinguish",
+STRATEGIES = ("none_needed", "flow_reduction", "diluent_gas", "water_mist", "abort_configuration")
+STRATEGY_LABELS = {
+    "none_needed": "No active suppression required",
+    "flow_reduction": "Reduce forced convection / ventilation",
+    "diluent_gas": "Diluent gas (CO2 / N2) inerting",
+    "water_mist": "Water mist and boundary cooling",
+    "abort_configuration": "Isolate / abort the configuration until review",
+}
+REASON_CODES = (
+    "o2_below_limiting",
+    "o2_near_limiting",
+    "o2_above_limiting",
+    "flow_above_blowoff",
+    "flow_near_blowoff",
+    "near_limit_behavior",
+    "low_confidence",
+    "ambiguous_top_classes",
+    "input_outside_observed_range",
+    "jev_unavailable_no_cache",
+    "physics_margins_engine",
+    "combiner_response_invalid",
 )
-TARGET_NAMES = ("class", "outcome", "label", "verdict", "flame_behavior", "behavior", "result")
-ID_TOKENS = {"id", "run", "test", "source", "ref", "cite", "note", "notes", "comment", "comments"}
-O2_BANDS = ((0.16, "below_limiting"), (0.21, "normoxic"), (0.30, "elevated"), (2.0, "high"))
-PRESSURE_BANDS = ((50.0, "sub_atmospheric"), (80.0, "reduced"), (110.0, "standard"), (1e9, "high"))
 TAU_GLOBAL = 0.60
 TAU_MARGIN = 0.10
-K_NEIGHBOURS = 5
 
 _LOG_QUEUE: queue.Queue = queue.Queue()
 _LOG_LISTENER: logging.handlers.QueueListener | None = None
 
 
+def iso_now() -> str:
+    return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
+
+
+def paths() -> dict[str, Path]:
+    return {
+        "dir": Path(ARTIFACT_DIR),
+        "schema": Path(ARTIFACT_DIR) / "schema.json",
+        "combiner": Path(ARTIFACT_DIR) / "combiner.joblib",
+        "metrics": Path(ARTIFACT_DIR) / "metrics.json",
+        "split": Path(ARTIFACT_DIR) / "split.json",
+        "runs": ROOT / "data" / "runs.jsonl",
+        "cases": ROOT / "data" / "cases.json",
+        "cache": Path(CACHE_PATH),
+        "validation": ROOT / "VALIDATION.md",
+    }
+
+
 def get_logger(name: str = "flameguard", level: int = logging.INFO) -> logging.Logger:
-    """Non-blocking logger: records go to a queue drained by a daemon thread."""
+    """Records are queued and drained by a daemon thread; no call blocks on I/O."""
     global _LOG_LISTENER
     logger = logging.getLogger(name)
     if getattr(logger, "_fg_ready", False):
@@ -79,182 +106,156 @@ def log_event(logger: logging.Logger, event: str, level: int = logging.INFO, **f
     logger.log(level, json.dumps({"event": event, **fields}, default=str, sort_keys=True))
 
 
-# --------------------------------------------------------------------- ingest
+# --------------------------------------------------------------------- JSON I/O
 
 
-def is_identifier(column: str) -> bool:
-    """Token match, so 'fluid'/'solid'/'oxidizer' are not mistaken for 'id'."""
-    return any(token in ID_TOKENS for token in re.split(r"[^a-z0-9]+", column.lower()) if token)
+def read_json(path: str | Path, default: Any = None) -> Any:
+    try:
+        return json.loads(Path(path).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return default
 
 
-def read_rows(path: str | Path) -> list[dict[str, str]]:
-    raw = Path(path).read_bytes()
-    for encoding in ("utf-8-sig", "cp1252", "latin-1"):
-        try:
-            text = raw.decode(encoding)
-            break
-        except UnicodeDecodeError:
-            continue
-    else:
-        raise ValueError(f"cannot decode {path} as utf-8, cp1252 or latin-1")
-    rows = [
-        {k.strip(): (v.strip() if isinstance(v, str) else "") for k, v in record.items() if k}
-        for record in csv.DictReader(io.StringIO(text))
-    ]
-    if not rows:
-        raise ValueError(f"no data rows parsed from {path}")
-    return rows
+def _atomic_write(path: Path, text: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=path.name, text=True)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            handle.write(text)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(tmp, path)
+    finally:
+        if os.path.exists(tmp):
+            os.unlink(tmp)
 
 
-def detect_target(columns: list[str], explicit: str | None, logger: logging.Logger) -> str:
-    if explicit:
-        if explicit not in columns:
-            raise ValueError(f"target column {explicit!r} not in {columns}")
-        return explicit
-    lowered = {c.lower(): c for c in columns}
-    for candidate in TARGET_NAMES:
-        if candidate in lowered:
-            return lowered[candidate]
-    log_event(logger, "target_autodetected", column=columns[-1], level=logging.WARNING)
-    return columns[-1]
+def write_json(path: str | Path, data: Any) -> Path:
+    target = Path(path)
+    _atomic_write(target, json.dumps(data, indent=2, sort_keys=True) + "\n")
+    return target
 
 
-def normalize_class(raw: str) -> str | None:
-    """Negation-aware mapping, so 'did not spread' is not read as spread."""
-    key = " ".join(raw.strip().lower().replace("_", " ").replace("-", " ").split())
-    if not key:
-        return None
-    if "margin" in key:
-        return "marginal"
-    if any(marker in key for marker in EXTINCTION_MARKERS):
-        return "extinction"
-    if "sustain" in key or "spread" in key:
-        return "sustained_spread"
-    return None
+def canonical_hash(payload: Any) -> str:
+    text = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
-def infer_meta(rows: list[dict[str, str]], target: str, logger: logging.Logger) -> dict[str, Any]:
-    """Discover the schema from the data itself; never assume column names."""
-    columns = list(rows[0].keys())
-    features: dict[str, dict[str, Any]] = {}
-    skipped: list[str] = []
-    for name in columns:
-        if name == target:
-            continue
-        if is_identifier(name):
-            skipped.append(name)
-            continue
-        values = [r.get(name, "") for r in rows]
-        present = [v for v in values if v != ""]
-        if not present:
-            skipped.append(name)
-            continue
-        numbers: list[float] = []
-        failed = 0
-        for value in present:
+# ----------------------------------------------------------------------- cache
+_CACHE_THREAD_LOCK = threading.Lock()
+
+
+@contextmanager
+def _file_lock(path: Path):
+    lock_path = path.with_suffix(path.suffix + ".lock")
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    with _CACHE_THREAD_LOCK:
+        with open(lock_path, "a+", encoding="utf-8") as handle:
+            if fcntl is not None:
+                fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
             try:
-                number = float(value)
-            except ValueError:
-                failed += 1
-                continue
-            if np.isfinite(number):
-                numbers.append(number)
-            else:
-                failed += 1
-        if numbers and failed <= 0.2 * len(present):
-            mean = float(np.mean(numbers))
-            std = float(np.std(numbers))
-            features[name] = {
-                "kind": "numeric",
-                "min": float(min(numbers)),
-                "max": float(max(numbers)),
-                "mean": mean if np.isfinite(mean) else 0.0,
-                "std": std if np.isfinite(std) and std > 0.0 else 1.0,
-            }
+                yield
+            finally:
+                if fcntl is not None:
+                    fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+
+
+def cache_read(path: str | Path | None = None) -> dict[str, Any]:
+    target = Path(path or CACHE_PATH)
+    empty = {"version": 1, "entries": {}}
+    if not target.exists():
+        return empty
+    try:
+        data = json.loads(target.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        data = None
+    if not isinstance(data, dict) or data.get("version") != 1 or not isinstance(data.get("entries"), dict):
+        quarantine = target.with_name(f"{target.name}.corrupt.{int(time.time())}")
+        try:
+            target.replace(quarantine)
+        except OSError:
+            quarantine = None
+        log_event(
+            get_logger(),
+            "cache_corrupt",
+            path=str(target),
+            quarantine=str(quarantine) if quarantine else None,
+            level=logging.ERROR,
+        )
+        return empty
+    return data
+
+
+def cache_get(key: str, path: str | Path | None = None) -> dict[str, Any] | None:
+    return cache_read(path)["entries"].get(key)
+
+
+def cache_put(key: str, entry: dict[str, Any], path: str | Path | None = None) -> None:
+    target = Path(path or CACHE_PATH)
+    with _file_lock(target):
+        data = cache_read(target)
+        data["entries"][key] = entry
+        _atomic_write(target, json.dumps(data, indent=2, sort_keys=True) + "\n")
+
+
+def cache_size(path: str | Path | None = None) -> int:
+    return len(cache_read(path)["entries"])
+
+
+# --------------------------------------------------------------------- schema
+
+
+def scenario_model(schema: dict[str, Any]) -> type[BaseModel]:
+    """Build the request model from the observed data, so 422s carry field paths."""
+    fields: dict[str, Any] = {}
+    limits = {
+        "thickness_mm": (0.0, 100.0),
+        "o2_percent": (0.0, 100.0),
+        "pressure_kpa": (0.0, 1000.0),
+        "opposed_flow_cm_s": (0.0, 200.0),
+    }
+    for spec in schema["fields"]:
+        name = spec["name"]
+        if spec["kind"] == "numeric":
+            low, high = limits.get(name, (0.0, 1e9))
+            fields[name] = (
+                float,
+                Field(..., ge=low, le=high, allow_inf_nan=False, description=f"{name} ({spec.get('unit', '')})"),
+            )
         else:
-            features[name] = {"kind": "categorical", "categories": sorted(set(present))}
-    if not features:
-        raise ValueError("no feature columns discovered after excluding the target column")
-    labels = [normalize_class(r.get(target, "")) for r in rows]
-    unknown = sorted({r.get(target, "") for r, lab in zip(rows, labels) if lab is None and r.get(target, "")})
-    if unknown:
-        log_event(logger, "unmapped_labels", labels=unknown[:10], count=len(unknown), level=logging.WARNING)
-    classes = sorted({lab for lab in labels if lab})
-    log_event(
-        logger,
-        "schema_inferred",
-        target=target,
-        features={n: s["kind"] for n, s in features.items()},
-        skipped_columns=skipped,
-        classes=classes,
-        rows=len(rows),
-    )
-    return {"target": target, "features": features, "classes": classes, "skipped_columns": skipped}
+            categories = tuple(spec["categories"])
+            fields[name] = (Literal[categories], Field(..., description="one of: " + ", ".join(categories)))
+    return create_model("Scenario", __config__=ConfigDict(extra="forbid"), **fields)
 
 
-def labelled_rows(rows: list[dict[str, str]], target: str) -> list[dict[str, str]]:
-    return [r for r in rows if normalize_class(r.get(target, "")) is not None]
-
-
-# -------------------------------------------------------------------- encoding
-
-
-def label_vector(rows: list[dict[str, str]], meta: dict[str, Any]) -> np.ndarray:
-    target = meta["target"]
-    return np.array([normalize_class(r.get(target, "")) for r in rows], dtype=object)
-
-
-def encode_model(rows: list[dict[str, str]], meta: dict[str, Any]) -> np.ndarray:
-    """Numeric matrix for the tree model: numeric stays raw, categorical becomes a code."""
-    features = list(meta["features"].items())
-    matrix = np.full((len(rows), len(features)), np.nan, dtype=float)
-    for j, (name, spec) in enumerate(features):
-        for i, row in enumerate(rows):
-            value = row.get(name, "")
-            if spec["kind"] == "numeric":
-                try:
-                    matrix[i, j] = float(value)
-                except (TypeError, ValueError):
-                    matrix[i, j] = np.nan
-            elif value in spec["categories"]:
-                matrix[i, j] = spec["categories"].index(value)
-    return matrix
-
-
-def categorical_mask(meta: dict[str, Any]) -> np.ndarray:
-    return np.array([spec["kind"] == "categorical" for spec in meta["features"].values()], dtype=bool)
-
-
-def encode_knn(matrix: np.ndarray, meta: dict[str, Any]) -> np.ndarray:
-    """Standardised numeric block + one-hot categorical block, for distances."""
-    features = list(meta["features"].items())
-    blocks: list[np.ndarray] = []
-    numeric_idx = [j for j, (_, s) in enumerate(features) if s["kind"] == "numeric"]
-    if numeric_idx:
-        means = np.array([features[j][1]["mean"] for j in numeric_idx])
-        stds = np.array([features[j][1]["std"] or 1.0 for j in numeric_idx])
-        values = matrix[:, numeric_idx]
-        values = np.where(np.isnan(values), means, values)
-        blocks.append((values - means) / stds)
-    for j, (_, spec) in enumerate(features):
-        if spec["kind"] == "categorical":
-            onehot = np.zeros((matrix.shape[0], len(spec["categories"])))
-            column = matrix[:, j]
-            for code in range(len(spec["categories"])):
-                onehot[:, code] = (column == code).astype(float)
-            blocks.append(onehot)
-    if not blocks:
-        raise ValueError("cannot build a distance matrix with no numeric or categorical features")
-    return np.hstack(blocks)
+def outside_observed_range(values: dict[str, Any], schema: dict[str, Any]) -> list[str]:
+    outside: list[str] = []
+    for spec in schema["fields"]:
+        if spec["kind"] != "numeric":
+            continue
+        value = values.get(spec["name"])
+        try:
+            number = float(value)
+        except (TypeError, ValueError):
+            continue
+        if number < spec["min"] or number > spec["max"]:
+            outside.append(spec["name"])
+    return outside
 
 
 # ------------------------------------------------------------------ decisions
 
 
-def abstain(probabilities: np.ndarray, tau_global: float = TAU_GLOBAL, tau_margin: float = TAU_MARGIN) -> tuple[bool, str]:
-    ordered = np.sort(np.asarray(probabilities, dtype=float))[::-1]
-    top = float(ordered[0]) if ordered.size else 0.0
-    second = float(ordered[1]) if ordered.size > 1 else 0.0
+def abstain(
+    probabilities: dict[str, float] | None,
+    tau_global: float = TAU_GLOBAL,
+    tau_margin: float = TAU_MARGIN,
+) -> tuple[bool, str]:
+    if not probabilities:
+        return True, "jev_unavailable_no_cache"
+    ordered = sorted((float(v) for v in probabilities.values()), reverse=True)
+    top = ordered[0]
+    second = ordered[1] if len(ordered) > 1 else 0.0
     if top < tau_global:
         return True, "low_confidence"
     if (top - second) < tau_margin:
@@ -262,143 +263,61 @@ def abstain(probabilities: np.ndarray, tau_global: float = TAU_GLOBAL, tau_margi
     return False, ""
 
 
-def outside_observed_range(values: dict[str, Any], meta: dict[str, Any]) -> list[str]:
-    """Numeric inputs beyond the training range are out of distribution."""
-    outside: list[str] = []
-    for name, spec in meta["features"].items():
-        if spec["kind"] != "numeric":
-            continue
-        try:
-            value = float(values.get(name))
-        except (TypeError, ValueError):
-            continue
-        if value < spec["min"] or value > spec["max"]:
-            outside.append(name)
-    return outside
-
-
-def o2_fraction(value: float | None) -> float | None:
-    """Normalise O2 to a fraction: datasets report either 0.21 or 21.0."""
-    if value is None:
-        return None
-    return value / 100.0 if value > 1.5 else value
-
-
-def pressure_kpa(value: float | None) -> float | None:
-    """Normalise pressure to kPa: datasets report either kPa (~101) or atm (~1.0)."""
-    if value is None:
-        return None
-    return value * 101.325 if value < 5.0 else value
-
-
-def band(value: float, bands: tuple[tuple[float, str], ...]) -> str:
-    for upper, name in bands:
-        if value <= upper:
-            return name
-    return bands[-1][1]
-
-
 def suppression_for(
     verdict: str,
-    o2_fraction_value: float | None = None,
-    pressure_kpa_value: float | None = None,
-    confined: bool | None = None,
-) -> str:
-    """Deterministic mapping: (verdict, O2 band, pressure band) -> one strategy.
-
-    Rule-based from published NASA microgravity fire-safety guidance. This is
-    deliberately NOT learned from data, and is labelled as such in the UI.
-    """
-    if verdict == VERDICT_REVIEW:
-        return "Abstained: escalate to a human fire-safety reviewer before acting."
-    o2_band = band(o2_fraction_value, O2_BANDS) if o2_fraction_value is not None else "unknown"
-    pressure_band = band(pressure_kpa_value, PRESSURE_BANDS) if pressure_kpa_value is not None else "unknown"
-    place = "confined volume" if confined else "open volume" if confined is not None else "volume"
+    o2_percent: float | None,
+    pressure_kpa: float | None,
+    flow_cm_s: float | None,
+    severity: float | None,
+    abstained: bool,
+) -> tuple[str, str]:
+    """Deterministic policy, not a learned classifier. Documented in README."""
+    if abstained:
+        return (
+            "abort_configuration",
+            "Verdict withheld: isolate or abort the configuration and escalate to a human fire-safety reviewer.",
+        )
     if verdict == "extinction":
         return (
-            f"No active suppression required in the {place}: maintain inerting margin and monitor "
-            f"(O2 {o2_band}, pressure {pressure_band})."
+            "none_needed",
+            "No active suppression required: maintain the inerting margin, monitor, and verify no re-ignition.",
         )
+    o2 = float(o2_percent) if o2_percent is not None else 21.0
+    pressure = float(pressure_kpa) if pressure_kpa is not None else 101.3
+    flow = float(flow_cm_s) if flow_cm_s is not None else 0.0
+    sev = float(severity) if severity is not None else 0.0
     if verdict == "marginal":
-        return (
-            f"Pre-emptive action: reduce O2 toward the limiting concentration and lower opposed-flow "
-            f"velocity below the blow-off threshold, then monitor continuously ({place}, O2 {o2_band})."
-        )
-    if o2_band == "high":
-        return (
-            f"Immediate inerting with CO2/N2 to below the limiting O2 concentration and depressurise "
-            f"the {place} ({pressure_band}); continuous agent until temperature falls."
-        )
-    if o2_band == "elevated":
-        return f"Fine water mist plus reduced O2 concentration in the {place}; boundary cooling."
-    return (
-        f"Water mist and boundary cooling in the {place}, with O2 reduction and verification that "
-        f"spread has stopped."
-    )
+        if flow >= 15.0:
+            return "flow_reduction", "Reduce forced convection / ventilation and re-assess the near-limit flame."
+        if o2 >= 25.0:
+            return "diluent_gas", "Dilute cabin oxygen with CO2/N2 below the limiting concentration."
+        return "water_mist", "Apply water mist and boundary cooling; verify the flame has not anchored."
+    if sev >= 3.0 or (o2 >= 30.0 and pressure >= 100.0):
+        return "abort_configuration", "High-severity spread: isolate or abort the configuration and suppress remotely."
+    if o2 >= 25.0:
+        return "diluent_gas", "Inert the volume with CO2/N2 to below the limiting oxygen concentration."
+    if flow >= 15.0:
+        return "flow_reduction", "Reduce forced convection / ventilation to limit the opposed-flow supply."
+    return "water_mist", "Apply water mist and boundary cooling, then verify spread has stopped."
 
 
-def nearest_runs(
-    query: np.ndarray,
-    train_matrix: np.ndarray,
-    train_rows: list[dict[str, str]],
-    train_labels: np.ndarray,
-    meta: dict[str, Any],
-    k: int = K_NEIGHBOURS,
-) -> list[dict[str, Any]]:
-    distances = np.linalg.norm(train_matrix - query, axis=1)
-    order = np.argsort(distances, kind="stable")[:k]
-    target = meta["target"]
-    feature_names = set(meta["features"])
-    return [
-        {
-            "distance": round(float(distances[i]), 4),
-            "actual_label": str(train_labels[i]),
-            "record": {key: value for key, value in train_rows[i].items() if key in feature_names},
-            "actual_raw": train_rows[i].get(target, ""),
-        }
-        for i in order
-    ]
-
-
-# ------------------------------------------------------------------ artifacts
-
-
-def paths(directory: Path | str = ARTIFACT_DIR) -> dict[str, Path]:
-    directory = Path(directory)
-    return {
-        "dir": directory,
-        "bundle": directory / "model.joblib",
-        "meta": directory / "features.json",
-        "metrics": directory / "metrics.json",
-        "validation": directory / "validation.md",
-    }
-
-
-def save_bundle(bundle: dict[str, Any], directory: Path | str = ARTIFACT_DIR) -> Path:
-    target = paths(directory)
-    target["dir"].mkdir(parents=True, exist_ok=True)
-    staging = target["bundle"].with_suffix(".joblib.tmp")
-    joblib.dump(bundle, staging)
-    staging.replace(target["bundle"])
-    return target["bundle"]
-
-
-def load_bundle(directory: Path | str = ARTIFACT_DIR) -> dict[str, Any]:
-    target = paths(directory)
-    if not target["bundle"].exists():
-        raise FileNotFoundError(f"no trained model at {target['bundle']}; run: python -m flameguard.train")
-    return joblib.load(target["bundle"])
-
-
-def scenario_model(meta: dict[str, Any]) -> type[BaseModel]:
-    """Build the request schema from features.json so validation tracks the data."""
-    fields: dict[str, Any] = {}
-    for name, spec in meta["features"].items():
-        if spec["kind"] == "numeric":
-            fields[name] = (float, Field(..., allow_inf_nan=False, description=f"numeric {name}"))
-        else:
-            fields[name] = (
-                Literal[tuple(spec["categories"])],
-                Field(..., description="one of: " + ", ".join(spec["categories"])),
-            )
-    return create_model("Scenario", __config__=ConfigDict(extra="forbid"), **fields)
+def reason_codes(answers: dict[str, Any], verdict: str | None, abstain_reason: str = "") -> list[str]:
+    codes: list[str] = []
+    o2 = float(answers.get("o2_above_limiting", 0.5))
+    flow = float(answers.get("flow_above_blowoff", 0.5))
+    sustained = float(answers.get("self_sustaining_60s", 0.5))
+    if o2 >= 0.60:
+        codes.append("o2_above_limiting")
+    elif o2 <= 0.40:
+        codes.append("o2_below_limiting")
+    else:
+        codes.append("o2_near_limiting")
+    if flow >= 0.60:
+        codes.append("flow_above_blowoff")
+    elif flow >= 0.40:
+        codes.append("flow_near_blowoff")
+    if verdict == "marginal" or 0.40 <= sustained <= 0.60:
+        codes.append("near_limit_behavior")
+    if abstain_reason:
+        codes.append(abstain_reason)
+    return list(dict.fromkeys(code for code in codes if code in REASON_CODES))

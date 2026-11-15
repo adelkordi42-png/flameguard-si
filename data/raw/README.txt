@@ -1,1 +1,0 @@
-# Drop the organizer CSV here, then run: python -m flameguard.train
