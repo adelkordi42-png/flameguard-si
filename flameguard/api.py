@@ -43,7 +43,8 @@ async def lifespan(_: FastAPI):
         yield
         return
     provider = (os.environ.get("ENGINE_PROVIDER") or "").strip().lower()
-    engine = None if provider == "physics" else llm.build_engine()
+    feature_mode = bundle.get("feature_mode", "engine+margins")
+    engine = None if (provider == "physics" or feature_mode == "margins_only") else llm.build_engine()
     STATE.update(
         schema=schema,
         bundle=bundle,
